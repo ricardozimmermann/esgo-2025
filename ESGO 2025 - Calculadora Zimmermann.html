@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <!-- Configurações de PWA (App) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#ea580c"> <!-- Cor Laranja para a barra do navegador -->
+
+    <title>ESGO Calc - Dr. Zimmermann</title>
+    
+    <!-- Ícone Laranja -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%23ea580c%22 rx=%2220%22/><text y=%22.9em%22 font-size=%2290%22 x=%2250%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22 fill=%22white%22>Z</text></svg>">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%23ea580c%22 rx=%2220%22/><text y=%22.9em%22 font-size=%2290%22 x=%2250%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22 fill=%22white%22>Z</text></svg>">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React Dependencies -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* Fonte Calibri solicitada, com fallbacks seguros */
+        body { 
+            background-color: #f8fafc; 
+            font-family: 'Calibri', 'Carlito', 'Segoe UI', Candara, 'Dejavu Sans', sans-serif; 
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Ajustes para inputs ficarem bonitos no mobile */
+        select, input {
+            font-size: 16px !important; /* Evita zoom no iOS */
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // --- ÍCONES ---
+        const Icons = {
+            Activity: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>,
+            Beaker: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4.5 3h15"/><path d="M6 3v16a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V3"/><path d="M6 14h12"/></svg>,
+            Info: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>,
+            AlertCircle: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>,
+            Clipboard: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
+        };
+
+        // --- LÓGICA DE CÁLCULO (IGUAL À ANTERIOR, COMPLETA) ---
+        const deriveMolecularProfile = (data) => {
+            if (data.testPole === 'mutated') return 'POLEmut';
+            if (data.testMMR === 'deficient') return 'MMRd';
+            if (data.testP53 === 'abnormal') return 'p53abn';
+            
+            const isHighGrade = data.grade === '3' || ['serous', 'clearcell', 'carcinosarcoma', 'undifferentiated'].includes(data.histology);
+            const isErNegative = data.testER === 'negative'; 
+
+            if (isHighGrade || isErNegative) return 'NSMP_HighRisk';
+            return 'NSMP_LowRisk';
+        };
+
+        const calculateAssessment = (data) => {
+            const profile = deriveMolecularProfile(data);
+            let figo = "TBD";
+            let risk = 'Uncertain';
+            let surgery = [];
+            let adjuvant = [];
+            let systemic = [];
+            let notes = [];
+
+            const isNonEndometrioid = ['serous', 'clearcell', 'carcinosarcoma', 'undifferentiated'].includes(data.histology);
+            const isAggressive = isNonEndometrioid || (data.histology === 'endometrioid' && data.grade === '3');
+            
+            let stagePrefix = "";
+            if (data.extraUterine === 'distant') stagePrefix = "IVC";
+            else if (data.extraUterine === 'bladder_bowel') stagePrefix = "IVA";
+            else if (data.extraUterine === 'para_aortic_nodes') stagePrefix = "IIIC2";
+            else if (data.extraUterine === 'pelvic_nodes') stagePrefix = "IIIC1";
+            else if (data.extraUterine === 'pelvic_peritoneum') stagePrefix = "IIIB2"; 
+            else if (data.extraUterine === 'vagina_param') stagePrefix = "IIIB1";
+            else if (data.extraUterine === 'adnexa') stagePrefix = "IIIA";
+            else {
+                if (isAggressive) {
+                    if (data.myoInvasion === 'none') stagePrefix = "IC";
+                    else stagePrefix = "IIC";
+                } else {
+                    if (data.cervical === 'stroma') stagePrefix = "IIA";
+                    else if (data.lvsi === 'substantial') stagePrefix = "IIB"; 
+                    else if (data.myoInvasion === 'deep') stagePrefix = "IB";
+                    else if (data.myoInvasion === 'inner') stagePrefix = "IA2"; 
+                    else stagePrefix = "IA1"; 
+                }
+            }
+
+            switch (profile) {
+                case 'POLEmut':
+                    if (['IA1','IA2','IB','IC','IIC','II','IIA','IIB'].includes(stagePrefix)) {
+                        figo = "IAm POLE";
+                        risk = 'Low';
+                    } else {
+                        figo = `${stagePrefix}m POLE`;
+                        risk = 'Uncertain';
+                        notes.push("Estádio III-IV POLE: Descalonamento a avaliar (ESGO 2025).");
+                    }
+                    break;
+                case 'MMRd':
+                    figo = `${stagePrefix}m MMRd`;
+                    if (['III', 'IV'].some(s => figo.includes(s))) risk = 'High';
+                    else if (stagePrefix === 'IIC' || (stagePrefix.includes('II') && !stagePrefix.includes('IIIC'))) risk = 'High-Intermediate';
+                    else if (data.lvsi === 'substantial') risk = 'High-Intermediate';
+                    else if (stagePrefix === 'IB') risk = 'Intermediate';
+                    else if (stagePrefix === 'IC') risk = 'Low'; 
+                    else risk = 'Low';
+                    break;
+                case 'p53abn':
+                    if (['IA2', 'IB', 'II', 'IIA', 'IIB', 'IIC'].includes(stagePrefix)) {
+                        figo = "IICm p53abn";
+                        risk = 'High';
+                    } else if (stagePrefix === 'IA1' || stagePrefix === 'IC') {
+                        figo = stagePrefix === 'IA1' ? "IA1m p53abn" : "ICm p53abn";
+                        risk = 'Uncertain';
+                        notes.push("p53abn sem miinvasão: Risco incerto, geralmente observação.");
+                    } else {
+                        figo = `${stagePrefix}m p53abn`;
+                        risk = 'High';
+                    }
+                    break;
+                case 'NSMP_LowRisk':
+                    figo = data.testP53 !== 'not_tested' ? `${stagePrefix}m NSMP` : stagePrefix;
+                    if (['III', 'IV'].some(s => stagePrefix.includes(s))) risk = 'High';
+                    else if (stagePrefix.includes('II') && !stagePrefix.includes('IIIC')) risk = 'Intermediate';
+                    else if (data.lvsi === 'substantial') risk = 'High-Intermediate';
+                    else if (stagePrefix === 'IB') risk = 'Intermediate';
+                    else risk = 'Low';
+                    if (data.testER === 'not_tested') notes.push("RE não testado: Assumindo risco menor.");
+                    break;
+                case 'NSMP_HighRisk':
+                    figo = data.testP53 !== 'not_tested' ? `${stagePrefix}m NSMP` : stagePrefix;
+                    if (data.myoInvasion === 'none' && data.extraUterine === 'none') risk = 'Uncertain';
+                    else risk = 'High';
+                    notes.push("Alto Risco (G3 ou RE Negativo).");
+                    break;
+            }
+
+            if (data.extraUterine === 'none' || data.extraUterine === 'adnexa' || data.cervical === 'stroma') {
+                surgery.push("Histerectomia Total + Salpingo-ooforectomia Bilateral (HT + SOB).");
+                surgery.push("Pesquisa de Linfonodo Sentinela (SLN) [II, A].");
+                if (isAggressive || profile === 'p53abn' || profile === 'NSMP_HighRisk') surgery.push("Omentectomia infracólica.");
+            } else {
+                surgery.push("Citorredução se R0 viável.");
+            }
+
+            switch (risk) {
+                case 'Low': adjuvant.push("Nenhuma."); break;
+                case 'Intermediate': adjuvant.push("Braquiterapia Vaginal (VBT) [I, A]."); adjuvant.push("Obs. se <60 anos [II, A]."); break;
+                case 'High-Intermediate': adjuvant.push("RTE Pélvica (EBRT) [II, A]."); adjuvant.push("VBT se pN0 [II, B]."); break;
+                case 'High':
+                    if (['III', 'IV'].some(s => figo.includes(s)) || ['III', 'IV'].some(s => stagePrefix.includes(s))) {
+                        systemic.push("Carboplatina/Paclitaxel [I, A].");
+                        adjuvant.push("EBRT conc/seq [I, B].");
+                        if (profile === 'MMRd') systemic.push("Imunoterapia (Check. Inh.) + QT [I, A].");
+                        else if (profile === 'p53abn' && data.testP53 !== 'not_tested') systemic.push("Considerar Trastuzumab (HER2+) [II, B].");
+                    } else {
+                        adjuvant.push("EBRT + QT [I, A].");
+                        adjuvant.push("Alternativa: QT -> RTE [I, B].");
+                    }
+                    break;
+                case 'Uncertain': adjuvant.push("Discutir em Tumor Board."); break;
+            }
+
+            return { figo2023: figo, derivedProfile: profile, riskGroup: risk, treatmentSurgery: surgery, treatmentAdjuvant: adjuvant, treatmentSystemic: systemic, notes };
+        };
+
+        const EsgoCalculator = () => {
+            const [data, setData] = useState({
+                age: 60, histology: 'endometrioid', grade: '1',
+                testPole: 'not_tested', testMMR: 'not_tested', testP53: 'not_tested', testER: 'not_tested',
+                myoInvasion: 'none', cervical: 'none', extraUterine: 'none', lvsi: 'none_focal', residual: false
+            });
+            const [result, setResult] = useState(null);
+
+            useEffect(() => { setResult(calculateAssessment(data)); }, [data]);
+
+            const handleChange = (field, value) => { setData(prev => ({ ...prev, [field]: value })); };
+
+            const getRiskColor = (risk) => {
+                switch (risk) {
+                    case 'Low': return 'bg-green-100 text-green-900 border-green-300';
+                    case 'Intermediate': return 'bg-yellow-100 text-yellow-900 border-yellow-300';
+                    case 'High-Intermediate': return 'bg-orange-100 text-orange-900 border-orange-300';
+                    case 'High': return 'bg-red-100 text-red-900 border-red-300';
+                    default: return 'bg-gray-100 text-gray-800 border-gray-300';
+                }
+            };
+
+            const getProfileLabel = (p) => {
+                switch (p) {
+                    case 'POLEmut': return 'POLE Mutado';
+                    case 'MMRd': return 'MMRd (Deficiente)';
+                    case 'p53abn': return 'p53 Anormal (Mutado)';
+                    case 'NSMP_LowRisk': return 'NSMP / Baixo Risco (RE+)';
+                    case 'NSMP_HighRisk': return 'NSMP / Alto Risco (G3 ou RE-)';
+                    default: return 'Indeterminado';
+                }
+            };
+
+            const copyToClipboard = () => {
+                if (!result) return;
+                const text = `
+Resumo ESGO 2025:
+Perfil: ${getProfileLabel(result.derivedProfile)}
+Estádio: ${result.figo2023}
+Risco: ${result.riskGroup}
+Conduta: ${result.treatmentAdjuvant.join(' ')}
+                `.trim();
+                
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                textArea.style.position = "fixed"; 
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                try { document.execCommand('copy'); alert("Copiado com sucesso!"); } 
+                catch (err) { alert("Erro ao copiar."); }
+                document.body.removeChild(textArea);
+            };
+
+            return (
+                <div className="max-w-6xl mx-auto p-4 md:p-6 min-h-screen">
+                    <div className="bg-white shadow-xl rounded-xl overflow-hidden border border-slate-200">
+                        
+                        {/* HEADER LARANJA SOLICITADO */}
+                        <div className="bg-orange-600 p-6 text-white flex justify-between items-center shadow-md">
+                            <div>
+                                <h1 className="text-2xl font-bold flex items-center gap-2 tracking-tight">
+                                    <Icons.Activity />
+                                    ESGO 2025
+                                </h1>
+                                <p className="text-orange-100 text-sm mt-1 font-medium">Suporte a Decisão Clínica</p>
+                            </div>
+                            <div className="hidden md:block text-right">
+                               <div className="text-xs font-bold bg-orange-700 px-3 py-1 rounded-full text-white shadow-sm border border-orange-500">v4.0 - Dr. Zimmermann</div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
+                            
+                            {/* COLUNA ESQUERDA: INPUTS (Span 5) */}
+                            <div className="lg:col-span-5 p-6 border-r border-slate-200 space-y-6 bg-slate-50">
+                                
+                                <div className="space-y-4">
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 border-b pb-1">Clínico & Histológico</h3>
+                                    
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1">Idade</label>
+                                            <input type="number" value={data.age} onChange={(e) => handleChange('age', parseInt(e.target.value))} className="w-full p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1">Grau</label>
+                                            <select value={data.grade} onChange={(e) => handleChange('grade', e.target.value)} className="w-full p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all">
+                                                <option value="1">G1 (Bem Dif.)</option>
+                                                <option value="2">G2 (Moderado)</option>
+                                                <option value="3">G3 (Indif.)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1">Tipo Histológico</label>
+                                        <select value={data.histology} onChange={(e) => handleChange('histology', e.target.value)} className="w-full p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all">
+                                            <option value="endometrioid">Endometrioide</option>
+                                            <option value="serous">Seroso</option>
+                                            <option value="clearcell">Células Claras</option>
+                                            <option value="carcinosarcoma">Carcinossarcoma</option>
+                                            <option value="undifferentiated">Indiferenciado</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* PAINEL MOLECULAR (Tema Laranja/Amber) */}
+                                <div className="bg-orange-50 p-5 rounded-xl border border-orange-100 shadow-sm">
+                                    <h3 className="text-xs font-bold text-orange-800 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                        <Icons.Beaker /> Perfil Molecular
+                                    </h3>
+                                    
+                                    <div className="space-y-3">
+                                        <div className="flex flex-col">
+                                            <label className="text-xs font-bold text-orange-900 mb-1">Sequenciamento POLE</label>
+                                            <select value={data.testPole} onChange={(e) => handleChange('testPole', e.target.value)} className="p-2 text-sm border border-orange-200 rounded-lg text-orange-900 bg-white focus:ring-1 focus:ring-orange-500">
+                                                <option value="not_tested">Não Testado / Pendente</option>
+                                                <option value="wild_type">Wild-type (Normal)</option>
+                                                <option value="mutated">Mutado (Patogênico)</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="flex flex-col">
+                                            <label className="text-xs font-bold text-orange-900 mb-1">MMR (IHQ)</label>
+                                            <select value={data.testMMR} onChange={(e) => handleChange('testMMR', e.target.value)} className="p-2 text-sm border border-orange-200 rounded-lg text-orange-900 bg-white focus:ring-1 focus:ring-orange-500">
+                                                <option value="not_tested">Não Testado / Pendente</option>
+                                                <option value="proficient">Proficiente (pMMR / Estável)</option>
+                                                <option value="deficient">Deficiente (dMMR / Instável)</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="flex flex-col">
+                                            <label className="text-xs font-bold text-orange-900 mb-1">p53 (IHQ)</label>
+                                            <select value={data.testP53} onChange={(e) => handleChange('testP53', e.target.value)} className="p-2 text-sm border border-orange-200 rounded-lg text-orange-900 bg-white focus:ring-1 focus:ring-orange-500">
+                                                <option value="not_tested">Não Testado / Pendente</option>
+                                                <option value="wild_type">Wild-type (Normal)</option>
+                                                <option value="abnormal">Anormal / Mutado (Aberrante)</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="flex flex-col pt-2 border-t border-orange-200 mt-2">
+                                            <label className="text-xs font-bold text-orange-900 mb-1 flex justify-between">
+                                                <span>Receptor de Estrogênio (RE)</span>
+                                            </label>
+                                            <select value={data.testER} onChange={(e) => handleChange('testER', e.target.value)} className={`p-2 text-sm border rounded-lg text-orange-900 bg-white focus:ring-1 focus:ring-orange-500 ${data.testER === 'not_tested' ? 'border-orange-300 bg-orange-50' : 'border-orange-200'}`}>
+                                                <option value="not_tested">Não Testado / Pendente</option>
+                                                <option value="positive">Positivo (≥ 10%)</option>
+                                                <option value="negative">Negativo (&lt; 10%)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 border-b pb-1">Estadiamento</h3>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1">Invasão Miometrial</label>
+                                        <select value={data.myoInvasion} onChange={(e) => handleChange('myoInvasion', e.target.value)} className="w-full p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500">
+                                            <option value="none">Ausente (Pólipo/Endométrio)</option>
+                                            <option value="inner">&lt; 50% (Metade interna)</option>
+                                            <option value="deep">≥ 50% (Metade externa)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1">LVSI (Invasão Linfovascular)</label>
+                                        <select value={data.lvsi} onChange={(e) => handleChange('lvsi', e.target.value)} className="w-full p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500">
+                                            <option value="none_focal">Ausente ou Focal</option>
+                                            <option value="substantial">Substancial / Extensa</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1">Extensão Extra-Uterina</label>
+                                        <select value={data.extraUterine} onChange={(e) => handleChange('extraUterine', e.target.value)} className="w-full p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500">
+                                            <option value="none">Nenhuma (Confinado ao Útero)</option>
+                                            <option value="adnexa">Anexos (Ovário/Trompa)</option>
+                                            <option value="vagina_param">Vagina ou Paramétrio</option>
+                                            <option value="pelvic_peritoneum">Peritônio Pélvico</option>
+                                            <option value="pelvic_nodes">Linfonodos Pélvicos (+)</option>
+                                            <option value="para_aortic_nodes">Linfonodos Para-aórticos (+)</option>
+                                            <option value="bladder_bowel">Mucosa Bexiga/Reto</option>
+                                            <option value="distant">Metástase à Distância</option>
+                                        </select>
+                                    </div>
+                                    {data.extraUterine === 'none' && (
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-700 mb-1">Invasão Estroma Cervical</label>
+                                            <select value={data.cervical} onChange={(e) => handleChange('cervical', e.target.value)} className="w-full p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500">
+                                                <option value="none">Ausente</option>
+                                                <option value="stroma">Presente</option>
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* COLUNA DIREITA: RESULTADOS (Span 7) */}
+                            <div className="lg:col-span-7 bg-white p-8 flex flex-col h-full">
+                                {result && result.figo2023 && (
+                                    <div className="space-y-6 fade-in h-full flex flex-col">
+                                        
+                                        {/* BANNER RESULTADO */}
+                                        <div className="flex items-center justify-between p-5 bg-slate-800 text-white rounded-xl shadow-lg border border-slate-700">
+                                            <div>
+                                                <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-1">Perfil Derivado</p>
+                                                <h2 className="text-xl md:text-2xl font-bold flex items-center gap-2 text-orange-400">
+                                                    {getProfileLabel(result.derivedProfile)}
+                                                </h2>
+                                            </div>
+                                            <div className="text-right border-l border-slate-600 pl-6">
+                                                <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-1">FIGO 2023</p>
+                                                <p className="text-xl font-mono font-bold text-white">{result.figo2023}</p>
+                                            </div>
+                                        </div>
+
+                                        {/* CARTÃO RISCO */}
+                                        <div className={`p-6 rounded-xl border-2 ${getRiskColor(result.riskGroup)} flex items-center gap-5 shadow-sm`}>
+                                            <div className="p-3 bg-white/60 rounded-full">
+                                                <Icons.Activity />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-bold uppercase opacity-70">Grupo de Risco ESGO</p>
+                                                <p className="text-3xl font-extrabold tracking-tight">{result.riskGroup} Risk</p>
+                                            </div>
+                                        </div>
+
+                                        {/* NOTAS E ALERTAS */}
+                                        {result.notes.length > 0 && (
+                                            <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 flex gap-3 text-sm text-orange-900">
+                                                <span className="shrink-0 mt-0.5 text-orange-600"><Icons.Info /></span>
+                                                <ul className="list-disc list-inside space-y-1">
+                                                    {result.notes.map((note, idx) => <li key={idx}>{note}</li>)}
+                                                </ul>
+                                            </div>
+                                        )}
+
+                                        {data.testER === 'not_tested' && (result.derivedProfile === 'NSMP_LowRisk' || result.derivedProfile === 'NSMP_HighRisk') && (
+                                            <div className="bg-amber-50 p-4 rounded-lg border border-amber-200 flex gap-3 text-sm text-amber-900">
+                                                <span className="shrink-0 mt-0.5 text-amber-600"><Icons.AlertCircle /></span>
+                                                <div>
+                                                    <strong>Atenção: Receptor de Estrogênio não informado.</strong>
+                                                    <p>Para NSMP/Desconhecido, o status do RE é fundamental.</p>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* RECOMENDAÇÕES DETALHADAS */}
+                                        <div className="space-y-5 pt-4">
+                                            <h4 className="text-sm font-bold text-slate-400 uppercase border-b pb-2">Plano Terapêutico Sugerido</h4>
+                                            
+                                            <div className="flex gap-4 items-start">
+                                                <div className="w-1.5 h-full min-h-[40px] bg-slate-300 rounded-full mt-1"></div>
+                                                <div className="flex-1">
+                                                    <h5 className="font-bold text-slate-800 text-base">Cirurgia</h5>
+                                                    <ul className="text-sm text-slate-600 mt-1 space-y-1.5 leading-relaxed">
+                                                        {result.treatmentSurgery.map((tx, i) => <li key={i}>{tx}</li>)}
+                                                    </ul>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex gap-4 items-start">
+                                                <div className="w-1.5 h-full min-h-[40px] bg-orange-500 rounded-full mt-1"></div>
+                                                <div className="flex-1">
+                                                    <h5 className="font-bold text-orange-900 text-base">Adjuvância</h5>
+                                                    <ul className="text-sm text-slate-600 mt-1 space-y-1.5 leading-relaxed">
+                                                        {result.treatmentAdjuvant.length > 0 
+                                                            ? result.treatmentAdjuvant.map((tx, i) => <li key={i}>{tx}</li>)
+                                                            : <li className="italic text-slate-400">Nenhuma recomendação específica.</li>
+                                                        }
+                                                    </ul>
+                                                </div>
+                                            </div>
+
+                                            {(result.riskGroup === 'High' || result.figo2023.includes('III') || result.figo2023.includes('IV')) && (
+                                                <div className="flex gap-4 items-start">
+                                                    <div className="w-1.5 h-full min-h-[40px] bg-red-500 rounded-full mt-1"></div>
+                                                    <div className="flex-1">
+                                                        <h5 className="font-bold text-red-900 text-base">Sistêmico</h5>
+                                                        <ul className="text-sm text-slate-600 mt-1 space-y-1.5 leading-relaxed">
+                                                            {result.treatmentSystemic.length > 0 
+                                                                ? result.treatmentSystemic.map((tx, i) => <li key={i}>{tx}</li>)
+                                                                : <li className="italic text-slate-400">Avaliar caso a caso.</li>
+                                                            }
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="pt-6 mt-auto">
+                                            <button onClick={copyToClipboard} className="w-full py-3.5 px-4 bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition flex items-center justify-center gap-2 text-sm font-bold shadow-lg active:scale-[0.98]">
+                                                <Icons.Clipboard /> Copiar Conduta
+                                            </button>
+                                        </div>
+
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                    <div className="text-center pt-8 pb-4 text-xs text-slate-400 font-sans">
+                        Baseado em ESGO-ESTRO-ESP 2025 • Uso Educacional Exclusivo
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<EsgoCalculator />);
+    </script>
+</body>
+</html>
